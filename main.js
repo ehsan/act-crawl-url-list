@@ -9,6 +9,7 @@ const leftPad = require('left-pad');
 const cookie = require('cookie');
 
 const SUBSCENE_START = "https://subscene.com/browse";
+const DEFAULT_SLEEP = 2;
 
 // Definition of the input
 const INPUT_TYPE = `{
@@ -168,9 +169,10 @@ Apify.main(async () => {
             page.loadingFinishedAt = new Date();
 
             // Wait for page to load
-            if (input.sleepSecs > 0) {
-                await browser.webDriver.sleep(1000 * input.sleepSecs);
+            if (input.sleepSecs <= 0) {
+                input.sleepSecs = DEFAULT_SLEEP;
             }
+            await browser.webDriver.sleep(1000 * input.sleepSecs);
 
             page.loadedUrl = await browser.webDriver.getCurrentUrl();
 

@@ -9,6 +9,10 @@ const leftPad = require('left-pad');
 const cookie = require('cookie');
 
 const SUBSCENE_START = "https://subscene.com/browse";
+const SUBSCENE_REGEX = new RegExp('(^https://subscene.com/subtitle/download/.*$)|' +
+                                  '(^https://subscene.com/browse.*$)|' +
+                                  '(^https://subscene.com/subtitles/[^/]*/english/.*$)|' +
+                                  '(^https://subscene.com/subtitles/[^/]*/farsi_persian/.*$)');
 const DEFAULT_SLEEP = 2;
 
 // Definition of the input

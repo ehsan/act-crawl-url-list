@@ -6,6 +6,7 @@ const request = require('request');
 const async = require('async');
 const typeCheck = require('type-check').typeCheck;
 const leftPad = require('left-pad');
+const cookie = require('cookie');
 
 const SUBSCENE_START = "https://subscene.com/browse";
 
@@ -156,6 +157,13 @@ Apify.main(async () => {
             }
 
             browser = await Apify.browse(opts);
+            browser.setCookie(cookie.serialize('LanguageFilter', input.languages.join(','), {
+                "domain": ".subscene.com",
+                "expires": inew Date("Thu, 15 Feb 2028 07:06:24 GMT"),
+                "httponly": true,
+                "path": "/",
+                "secure": false,
+            }));
 
             page.loadingFinishedAt = new Date();
 

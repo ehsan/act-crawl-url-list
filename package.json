@@ -15,6 +15,7 @@
   "dependencies": {
     "apify": "^0.4.48",
     "async": "^2.6.0",
+    "cookie": "^0.3.1",
     "left-pad": "^1.2.0",
     "request": "^2.83.0",
     "selenium-webdriver": "^3.6.0",

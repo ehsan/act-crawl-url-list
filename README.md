@@ -1,7 +1,6 @@
-# act-crawl-url-list
+# apify-subscene-crawler
 
-Apify act to crawl a list of URLs and extracts data from each of the pages,
-either using Chrome headless browser or using a simple HTTP request.
+Apify act to crawl a subscene.com for a specified set of languages.
 
 The act accepts input of application/json content type with the following body:
 
@@ -9,19 +8,8 @@ The act accepts input of application/json content type with the following body:
 
 ```javascript
 {
-    // Array of URLs to open by the browser.
-    urls: [String],
-
-    // URL to a text file containing list of URLs to crawl. Each URL needs to be on a separate line.
-    urlToTextFileWithUrls: String,
-
-    // Synchronous JavaScript code executed in the context of each web page,
-    // See http://seleniumhq.github.io/selenium/docs/api/javascript/module/selenium-webdriver/index_exports_WebDriver.html#executeScript
-    script: String,
-
-    // Asynchronous JavaScript code executed in the context of each web page,
-    // See http://seleniumhq.github.io/selenium/docs/api/javascript/module/selenium-webdriver/index_exports_WebDriver.html#executeAsyncScript
-    asyncScript: String,
+    // Array of subscene.com language IDs to be crawled.
+    languages: [Number],
 
     // Array of URLs to proxy servers. The proxies are picked randomly from this list.
     // Note that the proxy URL can contain a special token '<randomSessionId>',
@@ -57,10 +45,6 @@ The act accepts input of application/json content type with the following body:
     // Number of seconds to wait for the page to be loaded. By default 0.
     sleepSecs: Number,
 
-    // If true, the act does not start Chrome but uses simple HTTP request to
-    // only get the initial HTML of the page. The HTML is stored
-    rawHtmlOnly: Boolean,
-    
     // If rawHtmlOnly true, you can set compressedContent
     // It will set gzip options to request see: https://www.npmjs.com/package/request#requestoptions-callback
     compressedContent: Boolean,
@@ -105,10 +89,7 @@ Example inputs:
 
 ```javascript
 {
-    "urls": [
-        "https://www.example.com"
-    ],
-    "script": "return document.documentElement.innerHTML",
+    "languages": [13,46],
     "userAgents": ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.32 Safari/537.36"]
 }
 ```

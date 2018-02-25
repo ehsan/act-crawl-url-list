@@ -7,21 +7,16 @@ const async = require('async');
 const typeCheck = require('type-check').typeCheck;
 const leftPad = require('left-pad');
 
-// TODO:   save screenshots to kv-store
+const SUBSCENE_START = "https://subscene.com/browse";
 
 // Definition of the input
 const INPUT_TYPE = `{
-    urls: Maybe [String],
-    urlToTextFileWithUrls: Maybe String,
-    script: Maybe String,
-    asyncScript: Maybe String,
     proxyUrls: Maybe [String],
     avoidCache: Maybe Boolean,
     cacheSizeMegabytes: Maybe Number,
     userAgents: Maybe [String],
     concurrency: Maybe Number,
     sleepSecs: Maybe Number,
-    rawHtmlOnly: Maybe Boolean,
     compressedContent : Maybe Boolean,
     storePagesInterval: Maybe Number,
     pageTimeoutSecs: Maybe Number,
@@ -126,23 +121,7 @@ Apify.main(async () => {
     }
 
     // Get list of URLs from an external text file and add valid URLs to input.urls
-    input.urls = input.urls || [];
-    if (input.urlToTextFileWithUrls) {
-        console.log(`Fetching text file from ${input.urlToTextFileWithUrls}`);
-        const request = await requestPromised({ url: input.urlToTextFileWithUrls });
-        const textFile = request.body;
-        console.log(`Processing URLs from text file (length: ${textFile.length})`);
-        let count = 0;
-        textFile.split('\n').forEach((url) => {
-            url = url.trim();
-            const parsed = URL.parse(url);
-            if (parsed.host) {
-                count++;
-                input.urls.push(url);
-            }
-        });
-        console.log(`Added ${count} URLs from the text file`);
-    }
+    var urls = [SUBSCENE_START];
 
     if (input.storePagesInterval > 0) storePagesInterval = input.storePagesInterval;
 
@@ -165,58 +144,69 @@ Apify.main(async () => {
         try {
             console.log(`Loading page: ${url}` + (page.redactedProxyUrl ? ` (proxyUrl: ${page.redactedProxyUrl})` : '') );
 
-            if (input.rawHtmlOnly) {
-                // Open web page using request()
+            // Open web page using Chrome
+            const opts = _.pick(page, 'url', 'userAgent');
+            opts.proxyUrl = proxyUrl;
+
+            if (!input.avoidCache) {
+                opts.extraChromeArguments = ['--disk-cache-dir=/tmp/chrome-cache/'];
+                if (input.cacheSizeMegabytes > 0) {
+                    opts.extraChromeArguments.push(`--disk-cache-size=${input.cacheSizeMegabytes * 1024 * 1024}`);
+                }
+            }
+
+            browser = await Apify.browse(opts);
+
+            page.loadingFinishedAt = new Date();
+
+            // Wait for page to load
+            if (input.sleepSecs > 0) {
+                await browser.webDriver.sleep(1000 * input.sleepSecs);
+            }
+
+            page.loadedUrl = await browser.webDriver.getCurrentUrl();
+
+            function getAllLinks() {
+                var links = document.querySelectorAll('a:not([rel=nofollow])');
+                var urls = [];
+                for (var i = 0; i < links.length; ++i) {
+                    var href = links[i].href;
+                    if (href.match(SUBSCENE_REGEX)) {
+                        urls.push(href);
+                    }
+                }
+                return urls;
+            }
+
+            function getSubtitleInfo() {
+                var info = {};
+                var downloadButton = document.querySelector("#downloadButton");
+                if (downloadButton) {
+                    info.title = document.querySelector(".release div").innerText;
+                    info.subtitleURL = downloadButton.href;
+                }
+                return info;
+            }
+
+            var newURLs = await browser.webDriver.executeScript('(' + getAllLinks.toString() + ')()');
+            for (var i = 0; i < newURLs.length; ++i) {
+                urls.push(newURLs[i]);
+            }
+
+            var subtitleInfo = await browser.webDriver.executeScript('(' + getSubtitleInfo.toString() + ')()');
+            if ('title' in subtitleInfo) {
                 const opts = {
-                    url,
+                    url: subtitleInfo.subtitleURL,
                     headers: page.userAgent ? { 'User-Agent': page.userAgent } : null,
                     proxy: proxyUrl,
-                    gzip: !!(input.compressedContent),
+                    gzip: true,
                     timeout: input.pageTimeoutSecs > 0 ? input.pageTimeoutSecs*1000 : 30*1000,
                 };
 
                 const request = await requestPromised(opts);
-                page.html = request.body;
-                page.statusCode = request.response.statusCode;
-                page.loadingFinishedAt = new Date();
-                page.loadedUrl = url;
-                page.scriptResult = null;
-            } else {
-                // Open web page using Chrome
-                const opts = _.pick(page, 'url', 'userAgent');
-                opts.proxyUrl = proxyUrl;
-
-                if (!input.avoidCache) {
-                    opts.extraChromeArguments = ['--disk-cache-dir=/tmp/chrome-cache/'];
-                    if (input.cacheSizeMegabytes > 0) {
-                        opts.extraChromeArguments.push(`--disk-cache-size=${input.cacheSizeMegabytes * 1024 * 1024}`);
-                    }
-                }
-
-                browser = await Apify.browse(opts);
-
-                page.loadingFinishedAt = new Date();
-
-                // Wait for page to load
-                if (input.sleepSecs > 0) {
-                    await browser.webDriver.sleep(1000 * input.sleepSecs);
-                }
-
-                page.loadedUrl = await browser.webDriver.getCurrentUrl();
-
-                // Run sync script to get data
-                if (input.script) {
-                    page.scriptResult = await browser.webDriver.executeScript(input.script);
-                } else {
-                    page.scriptResult = null;
-                }
-
-                // Run async script to get data
-                if (input.asyncScript) {
-                    page.asyncScriptResult = await browser.webDriver.executeAsyncScript(input.asyncScript);
-                } else {
-                    page.asyncScriptResult = null;
-                }
+                page.subtitleName = subtitleInfo.title;
+                page.subtitle = request.body;
+                finishedPages.push(page);
             }
         } catch (e) {
             console.log(`Loading of web page failed (${url}): ${e}`);
@@ -230,7 +220,6 @@ Apify.main(async () => {
         // console.log(`Finished page: ${JSON.stringify(pageForLog, null, 2)}`);
         console.log(`Finished page: ${page.url}`);
 
-        finishedPages.push(page);
         await maybeStoreData();
     };
 
@@ -243,10 +232,10 @@ Apify.main(async () => {
     // Push all not-yet-crawled URLs to to the queue
     if (state.pageCount > 0) {
         console.log(`Skipping first ${state.pageCount} pages that were already crawled`);
-        input.urls.splice(0, state.pageCount);
+        urls.splice(0, state.pageCount);
     }
-    if (input.urls.length > 0) {
-        input.urls.forEach((url) => {
+    if (urls.length > 0) {
+        urls.forEach((url) => {
             q.push(url, urlFinishedCallback);
         });
 
